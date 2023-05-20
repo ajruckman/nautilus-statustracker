@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: statustracker
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: statustracker
+              image: statustracker
+              env:
+                - name: CONN_STRING
+                  valueFrom:
+                    secretKeyRef:
+                      name: conn-string
+                      key: conn_string
+          restartPolicy: OnFailure
