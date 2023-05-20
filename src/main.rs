@@ -1,18 +1,51 @@
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use dotenv::dotenv;
 use reqwest::blocking::Client;
 use scraper::{ElementRef, Html, Node, Selector};
+use serde_derive::Serialize;
+use serde_json::json;
 use std::env;
 use std::error::Error;
+use std::fmt::Debug;
 
-#[derive(Insertable)]
-#[diesel(table_name = nautilus_update)]
+#[derive(Queryable, PartialEq)]
 struct NautilusUpdate {
+    id: i32,
     current_status: Option<String>,
     ship_location: Option<String>,
     update_message: Option<String>,
     update_time: Option<String>,
+    fetched_at: DateTime<Utc>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = nautilus_update)]
+struct NautilusUpdateInsert {
+    current_status: Option<String>,
+    ship_location: Option<String>,
+    update_message: Option<String>,
+    update_time: Option<String>,
+    fetched_at: DateTime<Utc>,
+}
+
+impl Debug for NautilusUpdateInsert {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NautilusUpdate")
+            .field("current_status", &self.current_status)
+            .field("ship_location", &self.ship_location)
+            .field("update_message", &self.update_message)
+            .field("update_time", &self.update_time)
+            .field("fetched_at", &self.fetched_at)
+            .finish()
+    }
+}
+
+fn compare_update(a: &NautilusUpdate, b: &NautilusUpdateInsert) -> bool {
+    a.current_status == b.current_status
+        && a.ship_location == b.ship_location
+        && a.update_message == b.update_message
 }
 
 table! {
@@ -56,48 +89,44 @@ fn main() -> Result<(), Box<dyn Error>> {
     let update_message_element = parsed.select(&update_message_selector).next();
     let update_time_element = parsed.select(&update_time_selector).next();
 
-    if let Some(current_status) = current_status_element {
-        println!(
-            "Current status: {}",
-            current_status.text().collect::<String>()
-        );
-    } else {
-        println!("Current status not found");
-    }
-    if let Some(ship_location) = ship_location_element {
-        println!(
-            "Ship location: {}",
-            ship_location.text().collect::<String>()
-        );
-    } else {
-        println!("Ship location not found");
-    }
-    if let Some(update_message) = update_message_element {
-        println!(
-            "Update message: {}",
-            get_inner_text_and_links(update_message)
-        );
-    } else {
-        println!("Update message not found");
-    }
-    if let Some(update_time) = update_time_element {
-        println!("Update time: {}", update_time.text().collect::<String>());
-    } else {
-        println!("Update time not found");
-    }
+    let new_nautilus_update = NautilusUpdateInsert {
+        current_status: current_status_element.map(|e| e.text().collect()),
+        ship_location: ship_location_element.map(|e| e.text().collect()),
+        update_message: update_message_element.map(|e| get_inner_text_and_links(e)),
+        update_time: update_time_element.map(|e| e.text().collect()),
+        fetched_at: DateTime::<Utc>::MIN_UTC,
+    };
 
     //
 
-    diesel::insert_into(nautilus_update::table)
-        .values(&NautilusUpdate {
-            current_status: current_status_element.map(|e| e.text().collect()),
-            ship_location: ship_location_element.map(|e| e.text().collect()),
-            update_message: update_message_element.map(|e| get_inner_text_and_links(e)),
-            update_time: update_time_element.map(|e| e.text().collect()),
-        })
-        .execute(&mut db_conn)
-        .expect("Error saving new nautilus update");
+    let last_row: Option<NautilusUpdate> = nautilus_update::table
+        .order(nautilus_update::fetched_at.desc())
+        .first(&mut db_conn)
+        .optional()?;
 
+    let mut is_new = false;
+
+    if let Some(last_row) = last_row {
+        if !compare_update(&last_row, &new_nautilus_update) {
+            is_new = true;
+        } else {
+            println!("No new update");
+        }
+    } else {
+        // last_row was None, so insert
+        is_new = true;
+    }
+
+    if is_new {
+        println!("{:?}", new_nautilus_update);
+
+        diesel::insert_into(nautilus_update::table)
+            .values(&new_nautilus_update)
+            .execute(&mut db_conn)
+            .expect("Error saving new Nautilus update");
+
+        send_to_discord(&new_nautilus_update)?;
+    }
     Ok(())
 }
 
@@ -121,4 +150,40 @@ fn get_inner_text_and_links(element: ElementRef) -> String {
             _ => String::new(),
         })
         .collect()
+}
+
+//
+
+#[derive(Serialize)]
+struct DiscordWebhook {
+    content: String,
+}
+
+fn send_to_discord(update: &NautilusUpdateInsert) -> Result<(), Box<dyn Error>> {
+    let webhook_url = env::var("DISCORD_WEBHOOK_URL").expect("DISCORD_WEBHOOK_URL must be set");
+    let client = Client::new();
+
+    let formatted_message = format!(
+        "**Current Status:** {}\n**Ship Location:** {}\n**Update Message:** {}\n**Update Time:** {}",
+        update.current_status.as_ref().unwrap_or(&"Unknown".to_string()),
+        update.ship_location.as_ref().unwrap_or(&"Unknown".to_string()),
+        update.update_message.as_ref().unwrap_or(&"Unknown".to_string()),
+        update.update_time.as_ref().unwrap_or(&"Unknown".to_string()),
+    );
+
+    let webhook = json!({ "content": formatted_message });
+
+    let res = client
+        .post(&webhook_url)
+        .header("Content-Type", "application/json")
+        .body(webhook.to_string())
+        .send()?;
+
+    if res.status().is_success() {
+        println!("Message sent to Discord successfully");
+    } else {
+        println!("Failed to send message to Discord");
+    }
+
+    Ok(())
 }
