@@ -27,7 +27,6 @@ struct NautilusUpdateInsert {
     ship_location: Option<String>,
     update_message: Option<String>,
     update_time: Option<String>,
-    fetched_at: DateTime<Utc>,
 }
 
 impl Debug for NautilusUpdateInsert {
@@ -37,7 +36,6 @@ impl Debug for NautilusUpdateInsert {
             .field("ship_location", &self.ship_location)
             .field("update_message", &self.update_message)
             .field("update_time", &self.update_time)
-            .field("fetched_at", &self.fetched_at)
             .finish()
     }
 }
@@ -94,7 +92,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         ship_location: ship_location_element.map(|e| e.text().collect()),
         update_message: update_message_element.map(|e| get_inner_text_and_links(e)),
         update_time: update_time_element.map(|e| e.text().collect()),
-        fetched_at: Utc::now(),
     };
 
     //
