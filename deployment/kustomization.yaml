@@ -6,7 +6,7 @@ namespace: nautilus-statustracker
 images:
   - name: statustracker
     newName: us-central1-docker.pkg.dev/devspace1/nautilus/statustracker
-    newTag: "ebce8de"
+    newTag: "e5abc71"
 
 resources:
   - namespace.yaml
