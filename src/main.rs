@@ -94,7 +94,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ship_location: ship_location_element.map(|e| e.text().collect()),
         update_message: update_message_element.map(|e| get_inner_text_and_links(e)),
         update_time: update_time_element.map(|e| e.text().collect()),
-        fetched_at: DateTime::<Utc>::MIN_UTC,
+        fetched_at: Utc::now(),
     };
 
     //
