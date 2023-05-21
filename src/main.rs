@@ -135,11 +135,16 @@ fn get_inner_text_and_links(element: ElementRef) -> String {
             Node::Element(element) => {
                 if element.name() == "a" {
                     let href = element.attr("href").unwrap_or("");
+                    let formatted_href = if href.starts_with("/") {
+                        format!("https://nautiluslive.org{}", href)
+                    } else {
+                        href.to_string()
+                    };
                     let link_text = match ElementRef::wrap(child.clone()) {
                         Some(el_ref) => el_ref.text().collect::<String>(),
                         None => String::new(),
                     };
-                    format!("[{}]({})", link_text, href)
+                    format!("[{}]({})", link_text, formatted_href)
                 } else {
                     String::new()
                 }
