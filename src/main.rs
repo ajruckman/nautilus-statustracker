@@ -79,12 +79,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let current_status_selector = Selector::parse(".dash-data").unwrap();
     let ship_location_selector = Selector::parse(".status-full .dash-data").unwrap();
-    let update_message_selector = Selector::parse(".dash-message p").unwrap();
+    let update_message_selector_1 = Selector::parse(".dash-message p").unwrap(); // first format
+    let update_message_selector_2 = Selector::parse(".dash-message").unwrap(); // second format
     let update_time_selector = Selector::parse(".dash-message em").unwrap();
 
     let current_status_element = parsed.select(&current_status_selector).next();
     let ship_location_element = parsed.select(&ship_location_selector).next();
-    let update_message_element = parsed.select(&update_message_selector).next();
+
+    let update_message_element = parsed.select(&update_message_selector_1).next()
+        .or_else(|| parsed.select(&update_message_selector_2).next());
+
     let update_time_element = parsed.select(&update_time_selector).next();
 
     let new_nautilus_update = NautilusUpdateInsert {
